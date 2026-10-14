@@ -1,0 +1,8 @@
+# Datos privados (NUNCA subir al repositorio)
+data.json
+data.json.tmp
+
+# Dependencias y temporales
+node_modules/
+*.log
+.DS_Store

@@ -1,0 +1,81 @@
+══════════════════════════════════════════════════════════════════
+  COBRADIARIO ONLINE — Gestor de cobranza multiusuario
+  (app web con servidor + base de datos · tema negro/morado)
+══════════════════════════════════════════════════════════════════
+
+Esta es la versión ONLINE: tiene LINK para instalar como app en el
+teléfono, VARIOS USUARIOS (tu equipo de cobradores), REPARTO DE RUTAS
+y REPORTES. Ya no es un archivo suelto: es un servidor + base de datos.
+
+──────────────────────────────────────────────────────────────────
+1) USUARIOS POR DEFECTO
+──────────────────────────────────────────────────────────────────
+  • ADMIN (el jefe):  usuario  Erick   ·  contraseña  12345
+  • Cobrador demo:    usuario  Carlos  ·  contraseña  12345
+  (El admin crea más usuarios desde la pestaña "👤 Equipo".)
+
+──────────────────────────────────────────────────────────────────
+2) PROBARLO YA EN ESTE COMPUTADOR (sin publicar)
+──────────────────────────────────────────────────────────────────
+  1. Doble clic en  Iniciar.bat
+  2. Se abre el navegador en http://127.0.0.1:8090
+  3. Entra con Erick / 12345 y prueba todo (crea usuarios, reparte
+     rutas, mira reportes).
+
+──────────────────────────────────────────────────────────────────
+3) OBTENER EL LINK PARA EL TELÉFONO (lo más importante)
+──────────────────────────────────────────────────────────────────
+  Para que exista un link (https://…) que abra en el teléfono y diga
+  "Descargar aplicación", hay que publicar esta carpeta en un hosting
+  gratuito. El más sencillo es RENDER (gratis, sin tarjeta).
+
+  PASO A PASO:
+  1) Crea una cuenta gratis en  https://github.com  (guardar el código).
+  2) Crea un repositorio nuevo (privado) llamado "cobradiario".
+  3) Sube TODA esta carpeta (servidor.js, public/, Iniciar.bat, etc.)
+     a ese repositorio. (En GitHub: "Add file" → "Upload files" →
+     arrastra la carpeta → "Commit changes").
+  4) Entra a  https://render.com  e inicia sesión CON GITHUB.
+  5) Botón "New" → "Web Service" → elige tu repositorio "cobradiario".
+  6) Configura:
+       • Build Command:  (déjalo vacío)
+       • Start Command:  node servidor.js
+       • Plan:  Free
+  7) Pulsa "Deploy". En ~1 minuto te da un link como:
+       https://cobradiario-xxxx.onrender.com
+  8) Abre ESE link en el teléfono → toca el botón "📲 Descargar
+     aplicación" (o menú ⋮ → "Instalar aplicación").
+  9) Listo: queda instalado como app con su ícono morado. Comparte el
+     mismo link a tus cobradores; cada uno entra con su usuario.
+
+  NOTA: en Render gratis el servidor "duerme" si no se usa por 15 min
+  y tarda ~30s en despertar la primera vez. Para algo siempre activo
+  se usa el plan de pago o Railway/Fly.
+
+──────────────────────────────────────────────────────────────────
+4) CÓMO SE USA (el jefe = admin)
+──────────────────────────────────────────────────────────────────
+  • 👤 Equipo: crea a cada cobrador con su usuario y contraseña.
+  • Asignar rutas: en 👥 Clientes, toca ✏️ en una persona y elige
+    "Asignar a" el cobrador que le toca.
+  • Cada cobrador SOLO VE sus clientes asignados.
+  • 📊 Reportes: ves por cada usuario cuántos clientes tiene, cuánto
+    debe cobrar hoy, cuánto recaudó, atrasados y zona roja.
+  • 📥 Importar: sube/pega tu archivo de Word/texto y se organiza solo.
+  • 💬 Notificar: envía recordatorios por WhatsApp a cada cliente.
+  • 🧭 Ir a: navega con Waze/Google Maps a la dirección de cada cliente.
+  • ✏️ Editar / 🗑️ Eliminar / 🔄 Renovar: control total de cada persona.
+
+──────────────────────────────────────────────────────────────────
+5) PRIVACIDAD
+──────────────────────────────────────────────────────────────────
+  • Cada usuario tiene su contraseña (guardada cifrada con scrypt).
+  • El admin controla quién ve qué.
+  • Los datos viven en el servidor (data.json). Haz respaldos con el
+    botón "💾 Respaldo" dentro de la app.
+  • Usa una contraseña fuerte para el admin.
+
+══════════════════════════════════════════════════════════════════
+  Si quieres que YO te lo publique: créame un repo en GitHub (privado)
+  y compárteme acceso, o dame los datos de Render y lo subo por ti.
+══════════════════════════════════════════════════════════════════
