@@ -55,6 +55,7 @@ function seedClientes(){
 
 function defaultDb(){
   const saltAdmin = makeSalt();
+  const saltCarlos = makeSalt();
   return {
     config: {
       negocio: 'CobraDiario', moneda: '$', umbralZonaRoja: 3, diasNuevo: 7, diasDescanso: [0],
@@ -62,9 +63,10 @@ function defaultDb(){
       mensajeRecordatorio: 'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏'
     },
     users: [
-      { id: 'u-admin', usuario: 'Erick', nombre: 'Erick', rol: 'admin', telefono: '', salt: saltAdmin, passHash: hash('12345', saltAdmin), activo: true }
+      { id: 'u-admin', usuario: 'Erick', nombre: 'Erick', rol: 'admin', telefono: '', salt: saltAdmin, passHash: hash('12345', saltAdmin), activo: true },
+      { id: 'u-carlos', usuario: 'Carlos', nombre: 'Carlos', rol: 'cobrador', telefono: '300 000 0000', salt: saltCarlos, passHash: hash('12345', saltCarlos), activo: true }
     ],
-    clientes: []
+    clientes: seedClientes()
   };
 }
 
