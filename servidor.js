@@ -55,7 +55,6 @@ function seedClientes(){
 
 function defaultDb(){
   const saltAdmin = makeSalt();
-  const saltCarlos = makeSalt();
   return {
     config: {
       negocio: 'CobraDiario', moneda: '$', umbralZonaRoja: 3, diasNuevo: 7, diasDescanso: [0],
@@ -63,10 +62,9 @@ function defaultDb(){
       mensajeRecordatorio: 'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏'
     },
     users: [
-      { id: 'u-admin', usuario: 'Erick', nombre: 'Erick', rol: 'admin', telefono: '', salt: saltAdmin, passHash: hash('12345', saltAdmin), activo: true },
-      { id: 'u-carlos', usuario: 'Carlos', nombre: 'Carlos', rol: 'cobrador', telefono: '300 000 0000', salt: saltCarlos, passHash: hash('12345', saltCarlos), activo: true }
+      { id: 'u-admin', usuario: 'Erick', nombre: 'Erick', rol: 'admin', telefono: '', salt: saltAdmin, passHash: hash('12345', saltAdmin), activo: true }
     ],
-    clientes: seedClientes()
+    clientes: []
   };
 }
 
@@ -207,6 +205,26 @@ async function handleApi(req, res, user, pathname){
 
   // ---- sesión ----
   if(method === 'GET' && r0 === 'me') return send(res, 200, { user: safeUser(user) });
+
+  // ---- cambiar mi contraseña ----
+  if(method === 'POST' && r0 === 'me' && r1 === 'password'){
+    const b = await readBody(req);
+    if(!b.actual || !b.nueva) return send(res, 400, { error: 'Faltan datos' });
+    if(String(b.nueva).length < 4) return send(res, 400, { error: 'Mínimo 4 caracteres' });
+    if(hash(b.actual, user.salt) !== user.passHash) return send(res, 401, { error: 'Contraseña actual incorrecta' });
+    user.salt = makeSalt();
+    user.passHash = hash(b.nueva, user.salt);
+    saveDb();
+    return send(res, 200, { ok: true });
+  }
+
+  // ---- reset (admin): borrar todos los clientes ----
+  if(method === 'POST' && r0 === 'reset'){
+    if(user.rol !== 'admin') return send(res, 403, { error: 'Solo el administrador' });
+    db.clientes = [];
+    saveDb();
+    return send(res, 200, { ok: true });
+  }
 
   // ---- config ----
   if(r0 === 'config'){
