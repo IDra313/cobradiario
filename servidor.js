@@ -9,8 +9,6 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-let Pool = null;
-try { Pool = require('pg').Pool; } catch(e) { Pool = null; }
 
 const PORT = process.env.PORT || 8090;
 const ROOT = __dirname;
@@ -71,34 +69,15 @@ function defaultDb(){
 }
 
 let db = null;
-let pool = null;
-
-async function loadDb(){
-  if(pool){
-    try{
-      await pool.query(`CREATE TABLE IF NOT EXISTS estado (key TEXT PRIMARY KEY, value JSONB NOT NULL)`);
-      const r = await pool.query(`SELECT value FROM estado WHERE key = 'db'`);
-      if(r.rows.length){ db = r.rows[0].value; return; }
-      db = defaultDb();
-      await saveDb();
-      return;
-    }catch(e){ console.error('Base de datos no disponible, usando archivo local:', e.message); }
-  }
+function loadDb(){
   try{
     if(fs.existsSync(DATA_FILE)){
       db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    } else { db = defaultDb(); await saveDb(); }
+    } else { db = defaultDb(); saveDb(); }
   }catch(e){ db = defaultDb(); }
 }
-
 let saving = false;
-async function saveDb(){
-  if(pool){
-    try{
-      await pool.query(`INSERT INTO estado (key, value) VALUES ('db', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(db)]);
-      return;
-    }catch(e){ console.error('Error guardando en base de datos:', e.message); }
-  }
+function saveDb(){
   if(saving) return; saving = true;
   try{
     const tmp = DATA_FILE + '.tmp';
@@ -411,16 +390,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  if(Pool && process.env.DATABASE_URL){ pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 }); }
-  loadDb().then(() => {
-    server.listen(PORT, () => {
-      console.log('CobraDiario Online listo en  http://127.0.0.1:' + PORT);
-      console.log('Admin: Erick / 12345');
-    });
-  }).catch((e) => {
-    console.error('Error cargando datos:', e && e.message);
-    db = defaultDb();
-    server.listen(PORT, () => console.log('CobraDiario (sin base de datos) en http://127.0.0.1:' + PORT));
+  loadDb();
+  server.listen(PORT, () => {
+    console.log('CobraDiario Online listo en  http://127.0.0.1:' + PORT);
+    console.log('Admin: Erick / 12345');
   });
 }
 
