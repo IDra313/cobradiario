@@ -1,0 +1,13 @@
+{
+  "name": "cobradiario",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gestor de cobranza diaria multiusuario",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
