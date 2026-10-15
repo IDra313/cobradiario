@@ -1,0 +1,17 @@
+{
+  "name": "CobraDiario — Gestor de cobranza",
+  "short_name": "CobraDiario",
+  "description": "Sistema de cobranza con usuarios, rutas, reportes y notificaciones.",
+  "lang": "es",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08080b",
+  "theme_color": "#b026ff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
