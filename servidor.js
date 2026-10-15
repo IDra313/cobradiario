@@ -9,6 +9,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+let Pool = null;
+try { Pool = require('pg').Pool; } catch(e) { Pool = null; }
 
 const PORT = process.env.PORT || 8090;
 const ROOT = __dirname;
@@ -58,19 +60,23 @@ function defaultDb(){
   const saltCarlos = makeSalt();
   return {
     config: {
-      negocio: 'CobraDiario', moneda: '$', umbralZonaRoja: 3, diasNuevo: 7, diasDescanso: [0],
+      negocio: 'CobraDiario', moneda: '$', umbralZonaRoja: 7, diasNuevo: 7, diasDescanso: [0],
       paisCodigo: '57', navApp: 'google',
-      mensajeRecordatorio: 'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏'
+      mensajeRecordatorio: 'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏',
+      whatsappAuto: false, whatsappHora: '08:00', whatsappTemplate: 'recordatorio_pago'
     },
     users: [
       { id: 'u-admin', usuario: 'Erick', nombre: 'Erick', rol: 'admin', telefono: '', salt: saltAdmin, passHash: hash('12345', saltAdmin), activo: true },
       { id: 'u-carlos', usuario: 'Carlos', nombre: 'Carlos', rol: 'cobrador', telefono: '300 000 0000', salt: saltCarlos, passHash: hash('12345', saltCarlos), activo: true }
     ],
-    clientes: seedClientes()
+    clientes: seedClientes(),
+    recordatorios: {}
   };
 }
 
 let db = null;
+let pool = null;
+let usePostgres = false;
 function loadDb(){
   try{
     if(fs.existsSync(DATA_FILE)){
@@ -79,7 +85,13 @@ function loadDb(){
   }catch(e){ db = defaultDb(); }
 }
 let saving = false;
-function saveDb(){
+async function saveDb(){
+  if(usePostgres && pool){
+    try{
+      await pool.query(`INSERT INTO estado (key, value) VALUES ('db', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(db)]);
+      return;
+    }catch(e){ console.error('Error guardando en Supabase:', e.message); }
+  }
   if(saving) return; saving = true;
   try{
     const tmp = DATA_FILE + '.tmp';
@@ -87,6 +99,16 @@ function saveDb(){
     fs.renameSync(tmp, DATA_FILE);
   }catch(e){ console.error('Error guardando:', e.message); }
   saving = false;
+}
+async function initPostgres(){
+  if(!Pool || !process.env.DATABASE_URL) return;
+  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 });
+  try{
+    await pool.query(`CREATE TABLE IF NOT EXISTS estado (key TEXT PRIMARY KEY, value JSONB NOT NULL)`);
+    const r = await pool.query(`SELECT value FROM estado WHERE key = 'db'`);
+    if(r.rows.length){ db = r.rows[0].value; usePostgres = true; console.log('✅ Datos cargados desde Supabase'); }
+    else { await pool.query(`INSERT INTO estado (key, value) VALUES ('db', $1::jsonb)`, [JSON.stringify(db)]); usePostgres = true; console.log('✅ Supabase inicializado'); }
+  }catch(e){ console.error('⚠️ Supabase no disponible, usando archivo local:', e.message); usePostgres = false; pool = null; }
 }
 
 /* ---------- sesiones ---------- */
@@ -175,6 +197,10 @@ function buildReportes(){
     };
   });
   const all = db.clientes;
+  const totalPrestado = all.reduce((s, c) => s + (Number(c.capital) || Number(c.deudaTotal) || 0), 0);
+  const totalProyectado = all.reduce((s, c) => s + (Number(c.deudaTotal) || (Number(c.capital) * (1 + (Number(c.interes) || 0)/100)) || 0), 0);
+  const totalRecaudado = all.reduce((s, c) => s + (c.historial || []).reduce((a, h) => a + (Number(h.monto) || 0), 0), 0);
+  const saldoPendiente = Math.max(0, totalProyectado - totalRecaudado);
   return {
     hoy,
     totales: {
@@ -184,7 +210,8 @@ function buildReportes(){
       zonaRoja: all.filter(c => estadoDe(c) === 'zonaroja').length,
       paganHoy: all.filter(debeHoy).length,
       totalCobrarHoy: all.filter(debeHoy).reduce((s, c) => s + (Number(c.cuota) || 0), 0),
-      recaudadoHoy: recaudadoDe(all)
+      recaudadoHoy: recaudadoDe(all),
+      totalPrestado, totalProyectado, totalRecaudado, saldoPendiente
     },
     porUsuario
   };
@@ -320,7 +347,9 @@ async function handleApi(req, res, user, pathname){
       if(user.rol !== 'admin' && c.asignadoA !== user.id) return send(res, 403, { error: 'Sin permiso' });
       const b = await readBody(req);
       ['nombre','telefono','zona','direccion','notas'].forEach(k => { if(b[k] !== undefined) c[k] = b[k]; });
-      ['cuota','deudaTotal','diasPagados'].forEach(k => { if(b[k] !== undefined) c[k] = (b[k] === null || b[k] === '') ? null : Number(b[k]); });
+      ['cuota','deudaTotal','diasPagados','capital','interes','plazo','saldoFijo','lat','lng'].forEach(k => { if(b[k] !== undefined) c[k] = (b[k] === null || b[k] === '') ? null : Number(b[k]); });
+      if(b.periodicidad !== undefined) c.periodicidad = b.periodicidad;
+      if(b.congelada !== undefined) c.congelada = !!b.congelada;
       if(b.fechaInicio !== undefined) c.fechaInicio = b.fechaInicio || null;
       if(b.ultimoPago !== undefined) c.ultimoPago = b.ultimoPago || null;
       if(user.rol === 'admin' && b.asignadoA !== undefined) c.asignadoA = b.asignadoA || null;
@@ -374,6 +403,60 @@ async function handleApi(req, res, user, pathname){
   send(res, 404, { error: 'Ruta no encontrada' });
 }
 
+/* ---------- WhatsApp automático ---------- */
+async function enviarWhatsAppTemplate(telefono, cliente, monto){
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  if(!token || !phoneId) return { ok: false, error: 'Sin token de WhatsApp' };
+  const t = String(telefono || '').replace(/\D/g, '');
+  if(!t) return { ok: false, error: 'Sin teléfono' };
+  try{
+    const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: t,
+        type: 'template',
+        template: {
+          name: db.config.whatsappTemplate || 'recordatorio_pago',
+          language: { code: 'es' },
+          components: [{ type: 'body', parameters: [
+            { type: 'text', text: String(cliente.nombre || 'cliente') },
+            { type: 'text', text: String(monto || '') }
+          ]}]
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  }catch(e){ return { ok: false, error: e.message }; }
+}
+
+function ejecutarRecordatoriosWhatsApp(){
+  if(!db || !db.config || !db.config.whatsappAuto) return;
+  const hora = db.config.whatsappHora || '08:00';
+  const ahora = new Date();
+  const hhmm = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
+  if(hhmm !== hora) return;
+  if((db.config.diasDescanso || []).includes(ahora.getDay())) return;
+  const hoy = hoyISO();
+  db.recordatorios = db.recordatorios || {};
+  let enviados = 0;
+  db.clientes.forEach(c => {
+    if(!debeHoy(c) || !c.telefono) return;
+    const key = hoy + ':' + c.id;
+    if(db.recordatorios[key]) return;
+    db.recordatorios[key] = true;
+    enviados++;
+    enviarWhatsAppTemplate(c.telefono, c, c.cuota).then(r => {
+      if(r.ok) console.log('WhatsApp enviado a', c.nombre);
+      else console.error('WhatsApp falló para', c.nombre, r.error || JSON.stringify(r.data));
+    });
+  });
+  if(enviados) saveDb();
+}
+
 /* ---------- servidor ---------- */
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -397,6 +480,8 @@ if (require.main === module) {
     console.log('CobraDiario Online listo en  http://127.0.0.1:' + PORT);
     console.log('Admin: Erick / 12345');
   });
+  initPostgres();
+  setInterval(ejecutarRecordatoriosWhatsApp, 60000);
 }
 
 module.exports = { loadDb, saveDb, getDb: () => db, handleApi, buildReportes, visibleClientes, diasAtraso, estadoDe, hash, makeSalt, createSession, getUserByToken, safeUser, safeCliente };
