@@ -203,6 +203,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:18px 14p
         <button class="hbtn" id="notificarBtn">💬 Notificar</button>
         <button class="hbtn" id="installBtn">📲 Instalar</button>
         <button class="hbtn" id="exportBtn">💾 Respaldo</button>
+        <button class="hbtn" id="passBtn">🔑 Contraseña</button>
         <button class="hbtn danger" id="logoutBtn">🚪 Salir</button>
       </div>
     </div>
@@ -212,6 +213,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:18px 14p
     <button class="tab active" data-tab="hoy">📅 Hoy</button>
     <button class="tab" data-tab="clientes">👥 Clientes<span class="cnt" id="cntClientes">0</span></button>
     <button class="tab" data-tab="nuevos">🆕 Entrando<span class="cnt" id="cntNuevos">0</span></button>
+    <button class="tab" data-tab="abonos">💰 Abonos</button>
     <button class="tab" data-tab="zonas">📍 Zonas</button>
     <button class="tab" data-tab="importar">📥 Importar</button>
     <button class="tab" data-tab="equipo" data-admin="1">👤 Equipo</button>
@@ -224,6 +226,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:18px 14p
     <section id="tab-hoy" class="tabpane"></section>
     <section id="tab-clientes" class="tabpane hidden"></section>
     <section id="tab-nuevos" class="tabpane hidden"></section>
+    <section id="tab-abonos" class="tabpane hidden"></section>
     <section id="tab-zonas" class="tabpane hidden"></section>
     <section id="tab-importar" class="tabpane hidden"></section>
     <section id="tab-equipo" class="tabpane hidden"></section>
@@ -259,9 +262,11 @@ function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[
 function fmtMoney(n){ if(n == null || isNaN(n)) return '—'; return (state.config.moneda || '$') + Number(n).toLocaleString('es-CO'); }
 function initials(n){ const p = String(n||'?').trim().split(/\s+/); if(p.length === 1) return p[0].slice(0,2).toUpperCase(); return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
 function hoyEtiqueta(){ return new Date().toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long', year:'numeric'}); }
+function saludo(){ const h = new Date().getHours(); if(h < 12) return {texto:'Buenos días', emoji:'🌅'}; if(h < 19) return {texto:'Buenas tardes', emoji:'☀️'}; return {texto:'Buenas noches', emoji:'🌙'}; }
+function resumenDia(){ const pagan = state.clientes.filter(debeHoy); const total = pagan.reduce((s,c)=>s+(c.cuota||0),0); const rojos = state.clientes.filter(c=>estadoDe(c)==='zonaroja').length; const nuevos = state.clientes.filter(esNuevo).length; let t = `Hoy tienes ${pagan.length} personas por cobrar (${fmtMoney(total)})`; if(rojos) t += `, ${rojos} en zona roja`; if(nuevos) t += `, ${nuevos} nuevos`; return t + '.'; }
 
 /* ---------- estado ---------- */
-const DEFAULT_CONFIG = { negocio:'CobraDiario', moneda:'$', umbralZonaRoja:3, diasNuevo:7, diasDescanso:[0], paisCodigo:'57', navApp:'google', mensajeRecordatorio:'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏' };
+const DEFAULT_CONFIG = { negocio:'CobraDiario', moneda:'$', umbralZonaRoja:7, diasNuevo:7, diasDescanso:[0], paisCodigo:'57', navApp:'google', mensajeRecordatorio:'Hola {nombre} 👋, te escribe {negocio}. Recuerda tu cuota de {cuota} ({estado}). ¡Gracias! 🙏' };
 let state = { config: {...DEFAULT_CONFIG}, clientes: [], users: [] };
 let me = null;
 let token = localStorage.getItem('cd_token') || null;
@@ -341,7 +346,7 @@ function matchField(label){
   for(const f of FIELD_ORDER) for(const syn of FIELD_SYNONYMS[f]){ const S = norm(syn); if(S.length >= 4 && L.includes(S)) return f; }
   return null;
 }
-function blankClient(){ return { id:uid(), nombre:'', telefono:'', zona:'', direccion:'', cuota:null, fechaInicio:null, ultimoPago:null, deudaTotal:null, diasPagados:null, notas:'', historial:[], asignadoA:null }; }
+function blankClient(){ return { id:uid(), nombre:'', telefono:'', zona:'', direccion:'', cuota:null, fechaInicio:null, ultimoPago:null, deudaTotal:null, diasPagados:null, notas:'', historial:[], asignadoA:null, capital:null, interes:null, plazo:null, periodicidad:'diario', congelada:false, saldoFijo:null, lat:null, lng:null }; }
 function applyRawField(c, f, val){
   val = String(val == null ? '' : val).trim();
   if(!val) return;
@@ -384,7 +389,7 @@ function openModal(title, bodyHtml, footHtml){ $('modalTitle').textContent=title
 function closeModal(){ $('modalOverlay').classList.add('hidden'); }
 
 /* ---------- GPS / WhatsApp ---------- */
-function urlNavegar(c){ const q = encodeURIComponent((c.direccion || c.zona || '').trim()); if(!q) return null; const app = state.config.navApp || 'google'; if(app==='waze') return 'https://waze.com/ul?q='+q+'&navigate=yes'; if(app==='apple') return 'https://maps.apple.com/?q='+q; return 'https://www.google.com/maps/search/?api=1&query='+q; }
+function urlNavegar(c){ if(c.lat && c.lng){ const q=c.lat+','+c.lng; const app = state.config.navApp || 'google'; if(app==='waze') return 'https://waze.com/ul?ll='+q+'&navigate=yes'; return 'https://www.google.com/maps?q='+q; } const q = encodeURIComponent((c.direccion || c.zona || '').trim()); if(!q) return null; const app = state.config.navApp || 'google'; if(app==='waze') return 'https://waze.com/ul?q='+q+'&navigate=yes'; if(app==='apple') return 'https://maps.apple.com/?q='+q; return 'https://www.google.com/maps/search/?api=1&query='+q; }
 function irA(id){ const c = state.clientes.find(x=>x.id===id); if(!c) return; const u=urlNavegar(c); if(!u){ toast('Agrega una dirección o zona'); return; } window.open(u,'_blank'); }
 function telefonoWA(tel){ let d=String(tel||'').replace(/\D/g,''); if(!d) return null; if(d.startsWith('00')) d=d.slice(2); const cc=state.config.paisCodigo||'57'; if(d.startsWith(cc)) return d; if(d.startsWith('0')) d=d.slice(1); return cc+d; }
 function mensajeCliente(c){ const e=estadoDe(c), a=diasAtraso(c); const estado = e==='aldia' ? '¡gracias por estar al día!' : (e==='atrasado' ? ('llevas '+a+' día(s) sin pagar') : ('estás en mora '+a+' día(s)')); return (state.config.mensajeRecordatorio||'').replace(/\{nombre\}/g,c.nombre||'').replace(/\{negocio\}/g,state.config.negocio||'').replace(/\{cuota\}/g,fmtMoney(c.cuota)).replace(/\{dias\}/g,String(a)).replace(/\{estado\}/g,estado); }
@@ -396,6 +401,7 @@ function badgeHTML(c){
   let extra = e==='atrasado' ? (' · '+a+'d') : (e==='zonaroja' ? (' · '+a+'d') : '');
   let html = '<span class="badge '+(e==='aldia'?'st-ok':e==='atrasado'?'st-warn':'st-danger')+'">'+meta.icon+' '+meta.label+extra+'</span>';
   if(esNuevo(c)) html += ' <span class="badge new">🆕 Nuevo</span>';
+  if(c.congelada) html += ' <span class="badge asign">🧊 Congelada</span>';
   if(me && me.rol==='admin' && c.asignadoA){ const u = state.users.find(x=>x.id===c.asignadoA); html += ' <span class="badge asign">👤 '+(u?esc(u.nombre):'?')+'</span>'; }
   return html;
 }
@@ -440,7 +446,11 @@ function generarRecomendaciones(){
   if(atrasados.length>=3) r.push({icon:'💬',tipo:'accion',texto:`Hay ${atrasados.length} atrasados. Envía <b>recordatorios por WhatsApp</b>.`, accion:'notificarTodos'});
   if(pagan.length){ const total=pagan.reduce((s,c)=>s+(c.cuota||0),0); r.push({icon:'💰',tipo:'info',texto:`Hoy puedes recaudar <b>${fmtMoney(total)}</b> de ${pagan.length} personas.`}); }
   if(state.clientes.length===0) r.push({icon:'📂',tipo:'info',texto:'Aún no tienes personas. <b>Importa o agrega</b> tu información.', accion:'switchTabImportar'});
-  return r.slice(0,5);
+  const _h = new Date().getHours();
+  if(_h < 12) r.push({icon:'🗺️',tipo:'accion',texto:'<b>Mañana</b>: arma tu ruta y envía los recordatorios por WhatsApp antes de salir.', accion:'notificarTodos'});
+  else if(_h < 18) r.push({icon:'⏳',tipo:'info',texto:'<b>Tarde</b>: revisa quién aún no ha pagado hoy y hazle seguimiento.'});
+  else r.push({icon:'🌙',tipo:'info',texto:'<b>Noche</b>: registra los cobros del día y descarga un respaldo.'});
+  return r.slice(0,6);
 }
 
 /* ---------- pestañas ---------- */
@@ -451,6 +461,11 @@ function renderHoy(){
   const totalHoy = pagan.reduce((s,x)=>s+(x.cuota||0),0);
   const esDescanso = (state.config.diasDescanso||[]).includes(new Date().getDay());
   let html='';
+  const _sal = saludo();
+  html += `<div class="panel" style="margin-top:16px;border-left:4px solid var(--brand)"><div class="panel-b">
+    <div style="font-size:20px;font-weight:800">${_sal.emoji} ${_sal.texto}, ${esc(me ? me.nombre : '')}</div>
+    <div style="color:var(--muted);margin-top:4px">${resumenDia()} Tu asistente te deja las tareas de hoy aquí abajo 👇</div>
+  </div></div>`;
   if(esDescanso) html += `<div class="banner rest">🛌 Hoy es día de descanso según tus ajustes.</div>`;
   html += `<div class="kpis">
     <div class="kpi brand"><div class="k-label">Cobrar hoy</div><div class="k-value">${fmtMoney(totalHoy)}</div><div class="k-sub">${pagan.length} por cobrar</div></div>
@@ -475,25 +490,32 @@ function renderHoy(){
 }
 
 function renderClientes(){
-  const el=$('tab-clientes'); let list=state.clientes;
-  if(searchQ){ const q=norm(searchQ); list=list.filter(c=>norm(c.nombre+' '+c.telefono+' '+c.zona+' '+c.direccion+' '+c.notas).includes(q)); }
-  if(filterStatus!=='todos') list=list.filter(c=>estadoDe(c)===filterStatus);
-  list=sortByZona(list);
-  $('cntClientes').textContent = state.clientes.length;
+  const el=$('tab-clientes');
   const contar = s => state.clientes.filter(c=>estadoDe(c)===s).length;
-  let html=`<div class="toolbar"><div class="search"><span class="ic">🔍</span><input id="searchInput" placeholder="Buscar por nombre, teléfono, zona, dirección…" value="${esc(searchQ)}"></div>
+  el.innerHTML=`<div class="toolbar"><div class="search"><span class="ic">🔍</span><input id="searchInput" placeholder="Buscar por nombre, teléfono, zona, dirección…" value="${esc(searchQ)}"></div>
     <div class="chips">
       <button class="chip ${filterStatus==='todos'?'active':''}" data-f="todos">Todos (${state.clientes.length})</button>
       <button class="chip ${filterStatus==='aldia'?'active':''}" data-f="aldia">✔ Al día (${contar('aldia')})</button>
       <button class="chip ${filterStatus==='atrasado'?'active':''}" data-f="atrasado">⏳ Atrasados (${contar('atrasado')})</button>
       <button class="chip ${filterStatus==='zonaroja'?'active':''}" data-f="zonaroja">⚠ Zona roja (${contar('zonaroja')})</button>
-    </div></div>`;
-  if(list.length===0) html += `<div class="empty-tab"><div class="e-ic">🔎</div><p>No hay resultados.</p><button class="btn primary" onclick="switchTab('importar')">📥 Importar</button></div>`;
-  else html += `<div class="grid">${list.map(clientCardHTML).join('')}</div>`;
-  html += `<div style="margin-top:14px"><button class="btn primary" onclick="nuevoCliente()">＋ Agregar persona</button></div>`;
-  el.innerHTML = html;
-  const si=$('searchInput'); if(si){ si.addEventListener('input', e=>{ searchQ=e.target.value; renderClientes(); }); }
+    </div></div>
+    <div id="clientesResults"></div>
+    <div style="margin-top:14px"><button class="btn primary" onclick="nuevoCliente()">＋ Agregar persona</button></div>`;
+  const si=$('searchInput');
+  if(si){ si.addEventListener('input', e=>{ searchQ=e.target.value; renderClientesList(); }); }
   el.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{ filterStatus=ch.dataset.f; renderClientes(); }));
+  renderClientesList();
+}
+function renderClientesList(){
+  let list=state.clientes;
+  if(searchQ){ const q=norm(searchQ); list=list.filter(c=>norm(c.nombre+' '+c.telefono+' '+c.zona+' '+c.direccion+' '+c.notas).includes(q)); }
+  if(filterStatus!=='todos') list=list.filter(c=>estadoDe(c)===filterStatus);
+  list=sortByZona(list);
+  $('cntClientes').textContent = state.clientes.length;
+  const res=$('clientesResults');
+  if(!res) return;
+  if(list.length===0) res.innerHTML=`<div class="empty-tab"><div class="e-ic">🔎</div><p>No hay resultados.</p><button class="btn primary" onclick="switchTab('importar')">📥 Importar</button></div>`;
+  else res.innerHTML=`<div class="grid">${list.map(clientCardHTML).join('')}</div>`;
 }
 
 function renderNuevos(){
@@ -501,6 +523,38 @@ function renderNuevos(){
   let html=`<div class="banner rest" style="margin-top:16px">🆕 Personas que entraron en los últimos ${state.config.diasNuevo||7} días.</div>`;
   html += list.length===0 ? `<div class="empty-tab"><div class="e-ic">🆕</div><p>No hay personas entrando.</p></div>` : `<div class="grid" style="margin-top:14px">${list.map(clientCardHTML).join('')}</div>`;
   el.innerHTML=html;
+}
+
+function renderAbonos(){
+  const el=$('tab-abonos');
+  el.innerHTML=`<div class="panel" style="margin-top:16px"><div class="panel-h"><h2>💰 Registrar abono</h2></div><div class="panel-b">
+    <div class="search"><span class="ic">🔍</span><input id="abonoSearch" placeholder="Buscar por nombre o cédula…"></div>
+    <div id="abonoResults" style="margin-top:12px"></div>
+  </div></div>`;
+  const si=$('abonoSearch');
+  si.addEventListener('input', e=>{ renderAbonoResults(e.target.value); });
+  renderAbonoResults('');
+}
+function renderAbonoResults(q){
+  const res=$('abonoResults');
+  if(!res) return;
+  let list=state.clientes;
+  if(q && q.trim()){ const n=norm(q); list=list.filter(c=>norm(c.nombre+' '+c.telefono).includes(n)); }
+  list=list.slice(0, 20);
+  if(list.length===0){ res.innerHTML=`<p style="color:var(--muted)">No hay resultados.</p>`; return; }
+  res.innerHTML=list.map(c=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="flex:1;min-width:150px"><b>${esc(c.nombre)}</b><br><span style="color:var(--muted);font-size:12px">${esc(c.telefono||'')} · último pago ${c.ultimoPago?fmtFechaCorta(c.ultimoPago):'—'}</span></div>
+      <input type="number" step="any" id="ab_${c.id}" placeholder="Monto" value="${c.cuota!=null?c.cuota:''}" style="width:110px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--text)">
+      <button class="btn primary sm" onclick="abonar('${c.id}')">💵 Abonar</button>
+    </div>`).join('');
+}
+async function abonar(id){
+  const c=state.clientes.find(x=>x.id===id); if(!c) return;
+  const monto = parseFloat($('ab_'+id).value);
+  if(isNaN(monto) || monto <= 0){ toast('Ingresa un monto válido'); return; }
+  try{ await api('/clientes/'+id+'/pago','POST',{ fecha: hoyISO(), monto }); await loadAll(); renderAbonos(); renderAbonoResults($('abonoSearch').value); toast('✅ Abono de '+fmtMoney(monto)+' registrado'); }
+  catch(e){ toast(e.message); }
 }
 
 function renderZonas(){
@@ -602,10 +656,16 @@ async function renderReportes(){
     const d = await api('/reportes');
     const r = d.reportes;
     let html=`<div class="kpis" style="margin-top:16px">
-      <div class="kpi brand"><div class="k-label">Total clientes</div><div class="k-value">${r.totales.clientes}</div></div>
-      <div class="kpi ok"><div class="k-label">Cobrar hoy</div><div class="k-value">${fmtMoney(r.totales.totalCobrarHoy)}</div><div class="k-sub">${r.totales.paganHoy} personas</div></div>
-      <div class="kpi warn"><div class="k-label">Recaudado hoy</div><div class="k-value">${fmtMoney(r.totales.recaudadoHoy)}</div></div>
-      <div class="kpi danger"><div class="k-label">Zona roja</div><div class="k-value">${r.totales.zonaRoja}</div></div>
+      <div class="kpi brand"><div class="k-label">Total prestado</div><div class="k-value">${fmtMoney(r.totales.totalPrestado)}</div></div>
+      <div class="kpi warn"><div class="k-label">Total proyectado</div><div class="k-value">${fmtMoney(r.totales.totalProyectado)}</div><div class="k-sub">capital + intereses</div></div>
+      <div class="kpi ok"><div class="k-label">Total recaudado</div><div class="k-value">${fmtMoney(r.totales.totalRecaudado)}</div></div>
+      <div class="kpi danger"><div class="k-label">Saldo pendiente</div><div class="k-value">${fmtMoney(r.totales.saldoPendiente)}</div></div>
+    </div>
+    <div class="kpis" style="margin-top:0">
+      <div class="kpi"><div class="k-label">Cobrar hoy</div><div class="k-value">${fmtMoney(r.totales.totalCobrarHoy)}</div><div class="k-sub">${r.totales.paganHoy} personas</div></div>
+      <div class="kpi"><div class="k-label">Zona roja</div><div class="k-value">${r.totales.zonaRoja}</div></div>
+      <div class="kpi"><div class="k-label">Atrasados</div><div class="k-value">${r.totales.atrasados}</div></div>
+      <div class="kpi"><div class="k-label">Clientes</div><div class="k-value">${r.totales.clientes}</div></div>
     </div>`;
     html += `<div class="panel"><div class="panel-h"><h2>📊 Reporte por usuario</h2></div><div class="panel-b"><div class="tbl-scroll"><table><thead><tr><th>Usuario</th><th>Clientes</th><th>Por cobrar hoy</th><th>Recaudado hoy</th><th>Atrasados</th><th>Zona roja</th></tr></thead><tbody>`;
     r.porUsuario.forEach(u=>{ html += `<tr><td><b>${esc(u.nombre)}</b> <span style="color:var(--muted)">(${u.rol==='admin'?'admin':esc(u.usuario)})</span></td><td class="num">${u.clientes}</td><td class="num">${fmtMoney(u.totalCobrarHoy)}</td><td class="num">${fmtMoney(u.recaudadoHoy)}</td><td class="num">${u.atrasados}</td><td class="num">${u.zonaRoja}</td></tr>`; });
@@ -637,6 +697,20 @@ function renderAjustes(){
     <div class="field"><label>Días de descanso</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${dias.map((d,i)=>`<label class="chip ${(s.diasDescanso||[]).includes(i)?'active':''}" style="cursor:pointer"><input type="checkbox" class="rest-check" value="${i}" ${(s.diasDescanso||[]).includes(i)?'checked':''} style="display:none">${d}</label>`).join('')}</div></div>
     <div class="field"><label>Mensaje de WhatsApp</label><textarea id="s_mensaje">${esc(s.mensajeRecordatorio)}</textarea><div class="hint">Puedes usar: {nombre} {negocio} {cuota} {dias} {estado}</div></div>
     <button class="btn primary" onclick="guardarAjustes()">💾 Guardar ajustes</button>
+  </div></div>
+
+  <div class="panel"><div class="panel-h"><h2>💬 WhatsApp automático</h2></div><div class="panel-b">
+    <div class="frow">
+      <div class="field"><label>Enviar recordatorios solos</label><select id="s_waauto"><option value="1" ${s.whatsappAuto?'selected':''}>Activado</option><option value="0" ${!s.whatsappAuto?'selected':''}>Desactivado</option></select></div>
+      <div class="field"><label>Hora de envío (HH:MM)</label><input id="s_wahora" value="${esc(s.whatsappHora||'08:00')}" placeholder="08:00"></div>
+    </div>
+    <div class="field"><label>Nombre de la plantilla</label><input id="s_watemplate" value="${esc(s.whatsappTemplate||'recordatorio_pago')}"></div>
+    <div class="hint">Envía solo a los clientes que deben HOY, a la hora indicada, sin que toques nada. Requiere el token de WhatsApp Business en Render (WHATSAPP_TOKEN y WHATSAPP_PHONE_ID).</div>
+    <button class="btn primary" onclick="guardarAjustes()">💾 Guardar</button>
+  </div></div>
+
+  <div class="panel"><div class="panel-h"><h2>🗑️ Datos</h2></div><div class="panel-b" style="display:flex;flex-direction:column;gap:10px">
+    <button class="btn danger" onclick="confirmarEliminarTodo()">🗑️ Eliminar todo (borrar todos los clientes)</button>
   </div></div>`;
   el.querySelectorAll('.rest-check').forEach(ch=>ch.addEventListener('change',()=>{ const v=parseInt(ch.value,10); if(ch.checked){ if(!state.config.diasDescanso.includes(v)) state.config.diasDescanso.push(v); } else state.config.diasDescanso=state.config.diasDescanso.filter(x=>x!==v); }));
 }
@@ -646,26 +720,122 @@ async function guardarAjustes(){
   c.umbralZonaRoja=Math.max(1,parseInt($('s_umbral').value,10)||3); c.navApp=$('s_nav').value;
   c.paisCodigo=$('s_pais').value.replace(/\D/g,'')||'57'; c.diasNuevo=Math.max(1,parseInt($('s_nuevo').value,10)||7);
   c.mensajeRecordatorio=$('s_mensaje').value.trim();
+  c.whatsappAuto = ($('s_waauto') && $('s_waauto').value === '1');
+  c.whatsappHora = ($('s_wahora') ? $('s_wahora').value.trim() : '') || '08:00';
+  c.whatsappTemplate = ($('s_watemplate') ? $('s_watemplate').value.trim() : '') || 'recordatorio_pago';
   try{ await api('/config','PUT',{config:c}); await loadAll(); renderAll(); toast('Ajustes guardados ✓'); }catch(e){ toast(e.message); }
+}
+function cambiarMiContrasena(){
+  openModal('🔑 Cambiar contraseña', `<div class="field"><label>Contraseña actual</label><input id="p_actual" type="password"></div><div class="field"><label>Nueva contraseña</label><input id="p_nueva" type="password"></div><div class="field"><label>Repite la nueva</label><input id="p_nueva2" type="password"></div>`, `<button class="btn primary" onclick="confirmarCambiarMiContrasena()">Guardar</button><button class="btn" onclick="closeModal()">Cancelar</button>`);
+}
+async function confirmarCambiarMiContrasena(){
+  const actual=$('p_actual').value, nueva=$('p_nueva').value, nueva2=$('p_nueva2').value;
+  if(!actual || !nueva){ toast('Completa todos los campos'); return; }
+  if(nueva !== nueva2){ toast('Las contraseñas no coinciden'); return; }
+  try{ await api('/me/password','POST',{actual,nueva}); closeModal(); toast('🔑 Contraseña cambiada'); }catch(e){ toast(e.message); }
+}
+function confirmarEliminarTodo(){
+  openModal('🗑️ Eliminar todo', `<p>Esto borrará <b>todos los clientes</b>. No se puede deshacer. Los usuarios se mantienen.</p>`, `<button class="btn danger" onclick="eliminarTodo()">Sí, borrar todo</button><button class="btn" onclick="closeModal()">Cancelar</button>`);
+}
+async function eliminarTodo(){
+  try{ await api('/reset','POST',{}); closeModal(); await loadAll(); renderAll(); toast('🗑️ Todo eliminado'); }catch(e){ toast(e.message); }
+}
+
+/* ---------- recordatorios dentro de la app ---------- */
+let recordatoriosIniciados = false;
+function pedirPermisoNotif(){
+  if('Notification' in window && Notification.permission === 'default'){
+    try{ Notification.requestPermission(); }catch(e){}
+  }
+}
+function iniciarRecordatoriosInApp(){
+  if(recordatoriosIniciados) return;
+  recordatoriosIniciados = true;
+  setInterval(() => {
+    if(!('Notification' in window) || Notification.permission !== 'granted') return;
+    if(!me || me.rol !== 'admin') return;
+    const h = new Date().getHours();
+    if(new Date().getMinutes() !== 0) return;
+    if(![8,13,20].includes(h)) return;
+    const marca = 'notif_' + h + '_' + hoyISO();
+    if(localStorage.getItem(marca)) return;
+    localStorage.setItem(marca, '1');
+    const pagan = state.clientes.filter(debeHoy);
+    const total = pagan.reduce((s,c)=>s+(c.cuota||0),0);
+    let titulo, cuerpo;
+    if(h === 8){ titulo = '🌅 ¡Buenos días!'; cuerpo = `Hoy tienes ${pagan.length} personas por cobrar (${fmtMoney(total)}).`; }
+    else if(h === 13){ titulo = '🕐 Mediodía'; cuerpo = `Aún hay ${pagan.length} personas pendientes de pago.`; }
+    else { titulo = '🌙 Cierre del día'; cuerpo = 'Registra los cobros de hoy y descarga un respaldo.'; }
+    try{ new Notification(titulo, { body: cuerpo }); }catch(e){}
+  }, 60000);
 }
 
 /* ---------- CRUD clientes ---------- */
 function nuevoCliente(){ openModal('Agregar persona', formClienteHTML(blankClient()), `<button class="btn primary" onclick="guardarCliente()">Guardar</button><button class="btn" onclick="closeModal()">Cancelar</button>`); }
 function editarCliente(id){ const c=state.clientes.find(x=>x.id===id); if(!c) return; openModal('Editar persona', formClienteHTML(c), `<button class="btn danger" onclick="borrarCliente('${id}')" style="margin-right:auto">🗑️ Eliminar</button><button class="btn primary" onclick="guardarCliente()">Guardar</button><button class="btn" onclick="closeModal()">Cancelar</button>`); }
+function redondearCuota(n){ return Math.ceil(n / 1000) * 1000; }
+function calcularCuotaSim(capital, interes, plazo, periodicidad){
+  const c = Number(capital) || 0, i = Number(interes) || 0, p = Number(plazo) || 0;
+  if(c <= 0 || p <= 0) return null;
+  const total = c * (1 + i/100);
+  const cuotas = (periodicidad === 'quincenal') ? p*2 : p;
+  if(cuotas <= 0) return null;
+  return redondearCuota(total / cuotas);
+}
+function parsearCoords(texto){
+  if(!texto) return null;
+  const m = String(texto).match(/(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{1,3}\.\d{3,})/);
+  if(m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  return null;
+}
+function calcularCuotaForm(){
+  const cuota = calcularCuotaSim($('f_capital').value, $('f_interes').value, $('f_plazo').value, $('f_periodicidad').value);
+  if(cuota == null){ toast('Llena capital, interés y plazo'); return; }
+  $('f_cuota').value = cuota;
+  toast('🧮 Cuota calculada: ' + fmtMoney(cuota) + ' (redondeada)');
+}
+function usarUbicacionActual(){
+  if(!navigator.geolocation){ toast('Geolocalización no disponible en este dispositivo'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude.toFixed(6), lng = pos.coords.longitude.toFixed(6);
+    $('f_lat').value = lat; $('f_lng').value = lng;
+    $('f_ubicacion').value = lat + ',' + lng;
+    toast('📍 Ubicación capturada');
+  }, () => toast('No se pudo obtener la ubicación. Pega el link de WhatsApp en su lugar.'), { enableHighAccuracy: true });
+}
+function pegarUbicacion(){
+  const coords = parsearCoords($('f_ubicacion') ? $('f_ubicacion').value : '');
+  if(coords){ $('f_lat').value = coords.lat; $('f_lng').value = coords.lng; toast('📍 Coordenadas guardadas'); }
+  else toast('No detecté coordenadas. Pega el enlace completo de WhatsApp/Google Maps.');
+}
 function formClienteHTML(c){
   const asignSel = (me && me.rol==='admin') ? `<div class="field"><label>Asignar a (ruta)</label><select id="f_asignado"><option value="">— Sin asignar —</option>${state.users.map(u=>`<option value="${u.id}" ${c.asignadoA===u.id?'selected':''}>${esc(u.nombre)} (${u.rol==='admin'?'admin':esc(u.usuario)})</option>`).join('')}</select></div>` : '';
   return `<input type="hidden" id="f_id" value="${esc(c.id)}">
   <div class="field"><label>Nombre completo *</label><input id="f_nombre" value="${esc(c.nombre)}"></div>
   <div class="frow"><div class="field"><label>Teléfono</label><input id="f_telefono" value="${esc(c.telefono)}"></div><div class="field"><label>Zona / barrio</label><input id="f_zona" value="${esc(c.zona)}"></div></div>
-  <div class="field"><label>Dirección (para "Ir a")</label><input id="f_direccion" value="${esc(c.direccion)}"></div>
-  <div class="frow"><div class="field"><label>Cuota diaria ($)</label><input id="f_cuota" type="number" step="any" value="${c.cuota!=null?c.cuota:''}"></div><div class="field"><label>Deuda total ($)</label><input id="f_deuda" type="number" step="any" value="${c.deudaTotal!=null?c.deudaTotal:''}"></div></div>
+
+  <div style="border-top:1px solid var(--line);margin:10px 0 6px;padding-top:10px;font-weight:800;color:var(--brand-txt)">🧮 Simulador de crédito</div>
+  <div class="frow"><div class="field"><label>Capital prestado ($)</label><input id="f_capital" type="number" step="any" value="${c.capital!=null?c.capital:''}"></div><div class="field"><label>Interés (%)</label><input id="f_interes" type="number" step="any" value="${c.interes!=null?c.interes:''}"></div></div>
+  <div class="frow"><div class="field"><label>Plazo</label><input id="f_plazo" type="number" step="any" value="${c.plazo!=null?c.plazo:''}"></div><div class="field"><label>Periodicidad</label><select id="f_periodicidad"><option value="diario" ${c.periodicidad==='diario'?'selected':''}>Diario</option><option value="quincenal" ${c.periodicidad==='quincenal'?'selected':''}>Quincenal</option><option value="mensual" ${c.periodicidad==='mensual'?'selected':''}>Mensual</option></select></div></div>
+  <button class="btn sm" onclick="calcularCuotaForm()" type="button">🧮 Calcular cuota (redondea arriba)</button>
+  <div class="frow" style="margin-top:10px"><div class="field"><label>Cuota ($)</label><input id="f_cuota" type="number" step="any" value="${c.cuota!=null?c.cuota:''}"></div><div class="field"><label>Deuda total ($)</label><input id="f_deuda" type="number" step="any" value="${c.deudaTotal!=null?c.deudaTotal:''}"></div></div>
+
+  <div style="border-top:1px solid var(--line);margin:10px 0 6px;padding-top:10px;font-weight:800;color:var(--brand-txt)">📍 Ubicación exacta</div>
+  <div class="field"><label>Dirección (texto)</label><input id="f_direccion" value="${esc(c.direccion)}"></div>
+  <div class="field"><label>Pega el link de ubicación de WhatsApp</label><input id="f_ubicacion" placeholder="Ej: https://maps.google.com/?q=6.2442,-75.5812"><div style="display:flex;gap:6px;margin-top:6px"><button class="btn sm" onclick="pegarUbicacion()" type="button">📍 Guardar coordenadas</button><button class="btn sm" onclick="usarUbicacionActual()" type="button">📡 Usar mi ubicación</button></div></div>
+  <input type="hidden" id="f_lat" value="${c.lat!=null?c.lat:''}"><input type="hidden" id="f_lng" value="${c.lng!=null?c.lng:''}">
+
+  <div style="border-top:1px solid var(--line);margin:10px 0 6px;padding-top:10px;font-weight:800;color:var(--brand-txt)">🧊 Deuda congelada</div>
+  <div class="frow"><div class="field"><label>Congelar deuda (sin intereses)</label><select id="f_congelada"><option value="0" ${!c.congelada?'selected':''}>No</option><option value="1" ${c.congelada?'selected':''}>Sí</option></select></div><div class="field"><label>Saldo fijo acordado ($)</label><input id="f_saldofijo" type="number" step="any" value="${c.saldoFijo!=null?c.saldoFijo:''}"></div></div>
+
   <div class="frow"><div class="field"><label>Fecha de inicio</label><input id="f_inicio" type="date" value="${c.fechaInicio||''}"></div><div class="field"><label>Último pago</label><input id="f_ultimo" type="date" value="${c.ultimoPago||''}"></div></div>
   ${asignSel}
   <div class="field"><label>Notas</label><input id="f_notas" value="${esc(c.notas)}"></div>`;
 }
 async function guardarCliente(){
   const id=$('f_id').value;
-  const body={ nombre:$('f_nombre').value.trim(), telefono:$('f_telefono').value.trim(), zona:$('f_zona').value.trim(), direccion:$('f_direccion').value.trim(), cuota:$('f_cuota').value===''?null:parseFloat($('f_cuota').value), deudaTotal:$('f_deuda').value===''?null:parseFloat($('f_deuda').value), fechaInicio:$('f_inicio').value||null, ultimoPago:$('f_ultimo').value||null, notas:$('f_notas').value.trim() };
+  const coords = parsearCoords($('f_ubicacion') ? $('f_ubicacion').value : '');
+  const body={ nombre:$('f_nombre').value.trim(), telefono:$('f_telefono').value.trim(), zona:$('f_zona').value.trim(), direccion:$('f_direccion').value.trim(), cuota:$('f_cuota').value===''?null:parseFloat($('f_cuota').value), deudaTotal:$('f_deuda').value===''?null:parseFloat($('f_deuda').value), fechaInicio:$('f_inicio').value||null, ultimoPago:$('f_ultimo').value||null, notas:$('f_notas').value.trim(), capital:$('f_capital').value===''?null:parseFloat($('f_capital').value), interes:$('f_interes').value===''?null:parseFloat($('f_interes').value), plazo:$('f_plazo').value===''?null:parseFloat($('f_plazo').value), periodicidad:$('f_periodicidad').value||'diario', congelada:$('f_congelada').value==='1', saldoFijo:$('f_saldofijo').value===''?null:parseFloat($('f_saldofijo').value), lat:($('f_lat').value!==''?parseFloat($('f_lat').value):(coords?coords.lat:null)), lng:($('f_lng').value!==''?parseFloat($('f_lng').value):(coords?coords.lng:null)) };
   if(!body.nombre){ toast('El nombre es obligatorio'); return; }
   if(me && me.rol==='admin') body.asignadoA = $('f_asignado') ? ($('f_asignado').value || null) : null;
   try{ if(state.clientes.find(x=>x.id===id)) await api('/clientes/'+id,'PUT',body); else await api('/clientes','POST',body); closeModal(); await loadAll(); renderAll(); toast('Guardado ✓'); }catch(e){ toast(e.message); }
@@ -716,6 +886,23 @@ function enterApp(){
   if(me) $('appSubtitle').textContent = me.nombre + ' (' + (me.rol==='admin'?'Administrador':'Cobrador') + ') · ' + hoyEtiqueta();
   document.querySelectorAll('[data-admin]').forEach(el=>{ if(me && me.rol!=='admin') el.classList.add('hidden'); });
   renderAll();
+  if(!localStorage.getItem('cd_welcome_v1')){ localStorage.setItem('cd_welcome_v1','1'); setTimeout(mostrarBienvenida, 400); }
+  pedirPermisoNotif();
+  iniciarRecordatoriosInApp();
+}
+function mostrarBienvenida(){
+  openModal('👋 ¡Bienvenido a CobraDiario!', `
+    <p style="font-size:15px">Tu <b>asistente personal de cobranza</b>, que te acompaña todo el día.</p>
+    <ul style="color:var(--muted);padding-left:20px;line-height:1.8">
+      <li>📊 <b>Clasifica solo</b> a tus clientes: al día, atrasados y zona roja.</li>
+      <li>💵 <b>Ruta del día</b> ordenada por zona para cobrar.</li>
+      <li>👥 <b>Tu equipo</b>: crea cobradores y reparte rutas.</li>
+      <li>📊 <b>Reportes</b> de cuánto recauda cada uno.</li>
+      <li>🧭 <b>GPS</b> (Waze/Maps) y 💬 <b>WhatsApp</b> en cada cliente.</li>
+      <li>📥 <b>Importar</b> tu archivo de Word o texto.</li>
+    </ul>
+    <p style="color:var(--muted)">Aquí tienes <b>datos de ejemplo</b> para que veas cómo se ve todo. Cuando quieras, bórralos (Ajustes → Datos) e importa los tuyos.</p>`,
+    `<button class="btn" onclick="closeModal();switchTab('guia')">📘 Ver guía completa</button><button class="btn primary" onclick="closeModal()">¡Empezar!</button>`);
 }
 function logout(silent){
   token=null; me=null; localStorage.removeItem('cd_token');
@@ -726,7 +913,7 @@ function logout(silent){
 
 /* ---------- navegación ---------- */
 function switchTab(tab){ currentTab=tab; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab)); document.querySelectorAll('.tabpane').forEach(p=>p.classList.add('hidden')); const sec=$('tab-'+tab); if(sec) sec.classList.remove('hidden'); renderCurrent(); }
-function renderCurrent(){ const r={hoy:renderHoy,clientes:renderClientes,nuevos:renderNuevos,zonas:renderZonas,importar:renderImportar,equipo:renderEquipo,reportes:renderReportes,guia:renderGuia,ajustes:renderAjustes}; (r[currentTab]||renderHoy)(); }
+function renderCurrent(){ const r={hoy:renderHoy,clientes:renderClientes,nuevos:renderNuevos,abonos:renderAbonos,zonas:renderZonas,importar:renderImportar,equipo:renderEquipo,reportes:renderReportes,guia:renderGuia,ajustes:renderAjustes}; (r[currentTab]||renderHoy)(); }
 function renderAll(){ $('appTitle').textContent=state.config.negocio||'CobraDiario'; $('loginNegocio').textContent=state.config.negocio||'CobraDiario'; renderCurrent(); }
 
 /* ---------- exportar ---------- */
@@ -750,6 +937,7 @@ async function init(){
   $('loginBtn').addEventListener('click', doLogin);
   $('loginPass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
   $('logoutBtn').addEventListener('click', ()=>logout());
+  $('passBtn').addEventListener('click', cambiarMiContrasena);
   $('notificarBtn').addEventListener('click', notificarTodos);
   $('exportBtn').addEventListener('click', exportarJSON);
 
